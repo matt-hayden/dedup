@@ -12,9 +12,10 @@ import zipfile
 
 import adler_checksum
 
-
+"""
 DEFAULT_BLOCK_SIZE		=	4096
 DEFAULT_HASH_FUNCTION	=	hashlib.md5
+"""
 
 DEFAULT_BLOCK_SIZE		=	131072 # 2^17 seems good
 DEFAULT_HASH_FUNCTION	=	adler_checksum.Adler32
@@ -27,11 +28,13 @@ def characterize(flo,
 	block_size=DEFAULT_BLOCK_SIZE,
 	limit=4.8E9,
 	quick=None):
-	"""
+	"""	Generator for Python tuples. Identical files will produce
+		no conflicting tuples.
+
 	flo is a file-like object
 	eol = b'\r\n' is possible
 	hfunction is initialized, update()d, and digest()ed
-	block_size is either 512 or 4096 on current hardware
+	block_size shouldn't change across machines
 	limit is the most bytes allowed, None or limit <= 0 implies no limit
 	quick = True currently avoids loading the entire file when seekable
 	"""
@@ -111,38 +114,5 @@ def characterize(flo,
 		h2 = hfunction()
 		h2.update(last_full_block)
 		yield ('PARTIAL', h2.name), (size-block_size, size), h2.digest()
-
-
-if __name__ == '__main__':
-	import shelve
-	import sys
-	args = sys.argv[1:]
-
-	class Row:
-		pass
-	db = shelve.open('test.db')
-	quick = False
-	for arg in args:
-		row = Row()
-		row.filename = arg
-		row.stat = os.stat(arg)
-		"""
-		with open(arg, 'rb') as fi:
-			h = DEFAULT_HASH_FUNCTION()
-			h.update(fi.read())
-			print("whole:", h.digest())
-		"""
-		with open(arg, 'rb') as fi:
-			row.sums = set(characterize(fi, size_hint=row.stat.st_size, quick=quick))
-		db[arg] = row
-		if zipfile.is_zipfile(arg):
-			zf = zipfile.ZipFile(arg)
-			for internal_f in zf.infolist():
-				row.filename = arg
-				row.member_name = internal_f.filename
-				row.sums = set(characterize(zf.open(internal_f), size_hint=internal_f.file_size, quick=quick))
-				row.sums.update( [ (('TOTAL', 'CRC'), internal_f.CRC) ] )
-				db[os.path.join(arg, internal_f.filename)] = row
-	#db.close()
 
 # vim: tabstop=4 shiftwidth=4 softtabstop=4 number :
