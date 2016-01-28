@@ -6,20 +6,28 @@ import os, os.path
 import tarfile
 import zipfile
 
-from . import *
 import characterize
+
+
+MATCH_THRESHOLD = 0xEE
+
 
 def comm(lhs, rhs):
 	"""Returns (left-only, common, right-only)
 	"""
 	com = lhs.sums | rhs.sums
 	return (lhs.sums-com), com, (rhs-com)
-def cmp(lhs, rhs):
+def match(lhs, rhs):
 	_, com, _ = comm(self, other)
 	b = pack_match_code(com)
-	return THRESHOLD < b
+	return MATCH_THRESHOLD <= b
 	
 class FileObj:
+	pass
+# pickle needs these to not be nested inside of a function or class
+class TarFileObj(FileObj):
+	pass
+class ZipFileObj(FileObj):
 	pass
 
 def get_file_info(arg, quick=False, method=characterize.characterize, **kwargs):
@@ -40,7 +48,7 @@ def expand_zipinfo(arg, method=characterize.characterize):
 		for internal_f in zf.infolist():
 			if internal_f.filename.endswith('/'):
 				continue
-			row = FileObj()
+			row = ZipFileObj()
 #			row.comment		=	internal_f.comment
 #			row.date_time	=	internal_f.date_time
 			row.filename	=	internal_f.filename
@@ -58,7 +66,7 @@ def expand_tarfile(arg, method=characterize.characterize):
 		for internal_f in tf.getmembers():
 			if not internal_f.isfile():
 				continue
-			row = FileObj()
+			row = TarFileObj()
 			row.filename	=	arg
 			'''
 			row.stat = (internal_f.mode,	# st_mode
@@ -79,3 +87,4 @@ def expand_tarfile(arg, method=characterize.characterize):
 			yield row
 
 
+# vim: tabstop=4 shiftwidth=4 softtabstop=4 number :

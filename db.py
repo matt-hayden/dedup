@@ -2,17 +2,17 @@
 
 """
 """
-from contextlib import contextmanager
+#from contextlib import contextmanager
 import os, os.path
 import shelve
 import re
 
-from . import get_file_info
+from futil import *
 
 def cmp_stat(lhs, rhs):
 	if lhs.st_size == rhs.st_size:
 		if lhs.st_dev == rhs.st_dev:
-			if lhs.st_inode == rhs.st_inode:
+			if lhs.st_ino == rhs.st_ino:
 				assert lhs.st_mtime == rhs.st_mtime
 				return 0
 	if lhs.st_mtime < rhs.st_mtime:
@@ -24,21 +24,24 @@ def cmp_stat(lhs, rhs):
 class DatabaseError(Exception):
 	pass
 
-@contextmanager
+#@contextmanager
 class Database:
-	def __init__(self, filename):
+	def __init__(self, *args):
+		self.db = {}
+		self.filename = ''
+		self.root = ''
+		self.open(*args)
+	def open(self, filename):
 		dirname, basename = os.path.split(filename)
 		self.filename = os.path.abspath(filename)
 		self.root = os.path.abspath(dirname)
-
-	def open(self):
-		self.db = shelve.open(filename)
+		self.db = shelve.open(filename or self.filename)
 	def close(self):
 		self.db.close()
-	def __enter__(self):
-		self.open()
-	def __exit__(self):
-		self.close()
+#	def __enter__(self):
+#		self.open()
+#	def __exit__(self):
+#		self.close()
 
 	def add_entry(self, arg):
 		if arg.startswith(self.root):

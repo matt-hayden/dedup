@@ -4,38 +4,44 @@
 """
 
 ## python hashlib uses openssl for sha-256
-#import hashlib
 #import imghdr
 import os, os.path
 #import sndhdr
 import zipfile
 
 import adler_checksum
-from . import DEFAULT_BLOCK_SIZE, DEFAULT_HASH_FUNCTION
+
+"""
+# example of alternate settings
+import hashlib
+settings = { 'block_size'	:	131072<<1,
+			 'eol'			:	b'\r\n',
+			 'hfunction'	:	hashlib.md5 }
+
+"""
+
+
+default_settings = { 'block_size'	:	131072,
+					 'hfunction'	:	adler_checksum.Adler32, # hfunction is initialized, update()d, and digest()ed
+					 'limit'		:	4.8E9 }
 
 
 def characterize(flo,
 	size_hint=None,
-	limit=4.8E9,
-	quick=None):
+	quick=None,
+	settings=None):
 	"""	Generator for Python tuples. Identical files will produce
 		no conflicting tuples.
 
 	flo is a file-like object
 	size_hint helps reduce buffering
-	limit is the most bytes allowed, None or limit <= 0 implies no limit
 	quick = True currently avoids loading the entire file when seekable
 	"""
-	block_size = kwargs.pop('block_size', DEFAULT_BLOCK_SIZE)
-	eol = kwargs.pop('eol', b'\n') # b'\r\n' is possible
-	# hfunction is initialized, update()d, and digest()ed
-	hfunction = kwargs.pop('hfunction', DEFAULT_HASH_FUNCTION)
-	limit = limit or 0
+	if not settings:
+		settings = default_settings.copy()
+	hfunction = settings.pop('hfunction')
+	
 	seekable = None
-
-	if kwargs:
-		print(kwargs, "invalid")
-
 	try:
 		size = flo.seek(0, 2) # 2=end
 		yield 'SIZE', size
@@ -43,7 +49,7 @@ def characterize(flo,
 	except:
 		size = size_hint or 0
 		seekable = False
-	offset, h = 0, hfunction()
+	block_size, offset, h = settings.pop('block_size'), 0, hfunction()
 	if seekable:
 		if not size:
 			raise StopIteration
@@ -60,6 +66,7 @@ def characterize(flo,
 	fb = flo.read(block_size) # bytes object
 	first_block_size = len(fb)
 
+	eol = settings.pop('eol', b'\n')
 	if 4 < first_block_size:
 		yield 'FOURCC', fb[:4]
 		if eol in fb[5:99]: # \n at position 4 is not considered, but [:4] could be returned
@@ -74,6 +81,7 @@ def characterize(flo,
 		yield ('TOTAL', h.name), (0, first_block_size), h.digest()
 		raise StopIteration
 	# main loop
+	limit = settings.pop('limit', None) or 0
 	if size:
 		whole_blocks, last_block_size = divmod(size, block_size)
 		for bn in range(1, whole_blocks):

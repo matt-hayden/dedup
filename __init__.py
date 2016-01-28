@@ -7,13 +7,6 @@ import hashlib
 
 import adler_checksum
 
-"""
-DEFAULT_BLOCK_SIZE		=	4096
-DEFAULT_HASH_FUNCTION	=	hashlib.md5
-"""
-
-DEFAULT_BLOCK_SIZE		=	131072 # 2^17 seems good
-DEFAULT_HASH_FUNCTION	=	adler_checksum.Adler32
 
 MATCH_WEIGHTS = {}
 tags = 'FOURCC FIRST_LINE SIZE'.split()
@@ -23,7 +16,7 @@ i = 1
 for tag in tags:
 	MATCH_WEIGHTS[tag] = i
 	i <<= 1
-THRESHOLD = 0xEE
+
 
 def pack_match_code(tag_items, lookup=MATCH_WEIGHTS, weight_for_unknown=i):
 	bits = 0
@@ -38,5 +31,5 @@ def unpack_match_code(bits, lookup=MATCH_WEIGHTS):
 	return [ k for k, v in lookup.items() if v & bits ]
 
 
-__all__ = 'DEFAULT_BLOCK_SIZE DEFAULT_HASH_FUNCTION pack_match_code unpack_match_code'.split()
+__all__ = 'pack_match_code unpack_match_code'.split()
 # vim: tabstop=4 shiftwidth=4 softtabstop=4 number :
