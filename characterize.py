@@ -1,45 +1,41 @@
 #! /usr/bin/env python3
+
+"""
+"""
+
 ## python hashlib uses openssl for sha-256
-
-"""
-"""
-
-import hashlib
+#import hashlib
 #import imghdr
 import os, os.path
 #import sndhdr
 import zipfile
 
 import adler_checksum
-
-"""
-DEFAULT_BLOCK_SIZE		=	4096
-DEFAULT_HASH_FUNCTION	=	hashlib.md5
-"""
-
-DEFAULT_BLOCK_SIZE		=	131072 # 2^17 seems good
-DEFAULT_HASH_FUNCTION	=	adler_checksum.Adler32
+from . import DEFAULT_BLOCK_SIZE, DEFAULT_HASH_FUNCTION
 
 
 def characterize(flo,
 	size_hint=None,
-	eol=b'\n',
-	hfunction=DEFAULT_HASH_FUNCTION,
-	block_size=DEFAULT_BLOCK_SIZE,
 	limit=4.8E9,
 	quick=None):
 	"""	Generator for Python tuples. Identical files will produce
 		no conflicting tuples.
 
 	flo is a file-like object
-	eol = b'\r\n' is possible
-	hfunction is initialized, update()d, and digest()ed
-	block_size shouldn't change across machines
+	size_hint helps reduce buffering
 	limit is the most bytes allowed, None or limit <= 0 implies no limit
 	quick = True currently avoids loading the entire file when seekable
 	"""
+	block_size = kwargs.pop('block_size', DEFAULT_BLOCK_SIZE)
+	eol = kwargs.pop('eol', b'\n') # b'\r\n' is possible
+	# hfunction is initialized, update()d, and digest()ed
+	hfunction = kwargs.pop('hfunction', DEFAULT_HASH_FUNCTION)
 	limit = limit or 0
 	seekable = None
+
+	if kwargs:
+		print(kwargs, "invalid")
+
 	try:
 		size = flo.seek(0, 2) # 2=end
 		yield 'SIZE', size
@@ -47,7 +43,6 @@ def characterize(flo,
 	except:
 		size = size_hint or 0
 		seekable = False
-	###
 	offset, h = 0, hfunction()
 	if seekable:
 		if not size:
