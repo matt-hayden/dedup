@@ -2,29 +2,17 @@
 
 """
 """
-#from contextlib import contextmanager
 import os, os.path
 import shelve
 import re
 
 from futil import *
 
-def cmp_stat(lhs, rhs):
-	if lhs.st_size == rhs.st_size:
-		if lhs.st_dev == rhs.st_dev:
-			if lhs.st_ino == rhs.st_ino:
-				assert lhs.st_mtime == rhs.st_mtime
-				return 0
-	if lhs.st_mtime < rhs.st_mtime:
-		return 1
-	if lhs.st_size < rhs.st_size:
-		return 1
-	return -1
 
 class DatabaseError(Exception):
 	pass
 
-#@contextmanager
+
 class Database:
 	def __init__(self, *args):
 		self.db = {}
@@ -38,11 +26,6 @@ class Database:
 		self.db = shelve.open(filename or self.filename)
 	def close(self):
 		self.db.close()
-#	def __enter__(self):
-#		self.open()
-#	def __exit__(self):
-#		self.close()
-
 	def add_entry(self, arg):
 		if arg.startswith(self.root):
 			fullpath, k = arg, arg[(len(self.root)+1):]
@@ -53,7 +36,7 @@ class Database:
 			if not os.path.exists(fullpath):
 				del self.db[k]
 				raise DatabaseError('{} -> {} not found'.format(arg, fullpath))
-			new_stat = os.stat(fullpath)
+			new_stat = STAT(fullpath)
 			if hasattr(old_row, 'stat'):
 				if not cmp_stat(old_row.stat, new_stat): # returns -1 and 1 if different, 0 if identical
 					return False
@@ -82,6 +65,34 @@ class Database:
 				continue
 			fullpath = os.path.join(self.root, k)
 			self.add_entry(full_path)
+
+	def dedup(self):
+		"""Modified argument in-place, generating tuple of duplicates
+		"""
+		def is_valid(filename):
+			if os.path.islink(filename):
+				return False
+			return True
+		repl = {}
+		while len(self.db):
+			t_f, t_i = self.db.popitem()
+			if not is_valid(t_f):
+				continue
+			for f, i in self.db.items():
+				if not is_valid(f):
+					continue
+				if t_i == i:
+					self.del_entry(f)
+					yield f, i
+			if hasattr(t_i, 'members'):
+				for tm_f, tm_i in t_i.members.items():
+					for f, i in self.db.items():
+						if tm_i == i:
+							self.del_entry(f)
+							yield f, i
+			repl[t_f] = t_i
+		# at this point, self.db is empty
+		self.db.update(repl)
 
 
 # vim: tabstop=4 shiftwidth=4 softtabstop=4 number :
