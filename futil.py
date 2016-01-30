@@ -6,7 +6,8 @@ import os, os.path
 import tarfile
 import zipfile
 
-from . import *
+#from . import *
+from __init__ import *
 import characterize
 
 
@@ -53,14 +54,12 @@ class ZipFileObj(FileObj):
 	pass
 
 
-def get_file_info(arg, quick=False, method=characterize.characterize, **kwargs):
+def get_file_info(arg, method=characterize.characterize, **kwargs):
 	row = FileObj()
 	row.filename = arg
 	row.stat = STAT(arg)
 	with open(arg, 'rb') as fi:
-		row.sums = set(method(fi,
-							  size_hint=row.stat.st_size,
-							  quick=quick))
+		row.sums = set(method(fi, size_hint=row.stat.st_size))
 	if tarfile.is_tarfile(arg):
 		row.members = dict(expand_tarfile(arg, **kwargs))
 	elif zipfile.is_zipfile(arg):
@@ -82,13 +81,15 @@ def expand_zipinfo(arg, method=characterize.characterize):
 			row.sums.update( [ (('TOTAL', 'CRC'), internal_f.CRC) ] )
 #			row.volume		=	internal_f.volume
 			yield os.path.join(arg, row.filename), row
-def expand_tarfile(arg, method=characterize.characterize):
+def expand_tarfile(arg, method=characterize.characterize, ignore_symlinks=True):
 	"""
 		st_mode, st_ino, st_dev, st_nlink, st_uid, st_gid, st_size, st_atime, st_mtime, st_ctime
 	"""
 	with tarfile.open(arg) as tf:
 		for internal_f in tf.getmembers():
 			if not internal_f.isfile():
+				continue
+			if ignore_symlinks and internal_f.issym():
 				continue
 			row = TarFileObj()
 			row.filename	=	internal_f.name
