@@ -76,7 +76,7 @@ class Database:
 			fullpath = os.path.join(self.root, k)
 			self.add_entry(full_path)
 	def get_sums_frequencies(self, recurse_archives=True):
-		"""Returns (duplicate, unique) characteristics found in the database
+		"""Returns (list of duplicates, list of uniques) characteristics found in the database
 		"""
 		freqs = collections.Counter()
 		for vs in self.db.values():
@@ -104,9 +104,11 @@ class Database:
 		for f, i in self.db.items():
 			if i.sums & search_chars:
 				yield f, i
-	def dedup(self):
+	def dedup(self, action=None):
 		"""Does not recurse into archives
 		"""
+		if action is None:
+			action = self.del_entry
 		dp = dict(self.get_possible_duplicates())
 		while len(dp):
 			t_f, t_i = dp.popitem()
@@ -114,7 +116,7 @@ class Database:
 			for f, i in dups:
 				yield f, i
 				del dp[f]
-				self.del_entry(f)
+				action(f)
 	def dedup2(self):
 		"""Modified argument in-place, generating tuple of duplicates
 		"""

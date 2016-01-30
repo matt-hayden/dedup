@@ -17,43 +17,53 @@ def get_characteristics(arg, size_hint=None, wrapper=Adler32digester):
 	hfunction = wrapper.hfunction
 	ib = (1024, 1024) # default
 	size = None
-	if isinstance(arg, str):
+	if hasattr(arg, 'read'):
+		fdi = arg
+	elif isinstance(arg, str):
 		if os.path.isfile(arg):
+			size = size_hint or os.path.getsize(arg)
+			if size == 0:
+				return [ ('SIZE', 0) ]
 			dirname, basename = os.path.split(arg)
 			_, ext = os.path.splitext(basename)
 			if ext.upper() in 'JPG JPEG':
 				#y( ('THUMBNAIL', ...) )
 				ib = 256, 256
-				size = os.path.getsize(arg)
 			elif ext.upper() in 'MP4 M4A':
 				#y( ('FPCALC', ...) )
 				ib = 1024, 1024
-				size = os.path.getsize(arg)
 			fdi = open(arg, 'rb')
 	else:
-		fdi = arg # better have .read()
-	if size == 0:
-		return [ ('SIZE', 0) ]
-	if ib:
-		head_length, tail_length = ib
-		# callback may not be called for some files!
-		size, (head_b, tail_b) = getfile(fdi, ib, callback=updater.update)
-		assert size is not None
-		fdi.close()
-	assert updater.size == (size or 0)
+		raise ValueError(type(arg))
+	assert (0, 0) < ib, "invalid heading and tailing"
+	head_length, tail_length = ib
+	# callback may not be called for some files!
+	read_size, (head_b, tail_b) = getfile(fdi, ib, callback=updater.update)
+	if read_size == -1:
+		results.append( ('TRUNCATED', True) )
+	elif size is None:
+		size = read_size
+	else:
+		assert read_size == size, "Expected {} bytes from {}, got {}".format(size, arg, read_size)
+	assert 0 < read_size
+	#fdi.close()
+	assert updater.size == size, "Expected {} bytes from updater {}, got {}".format(size, updater, updater.size)
 	results = updater.digest()
+
 	h = hfunction()
 	h.update(head_b)
 	results.append( (('PARTIAL', h.name), (0, head_length), h.digest()) )
 	h = hfunction()
 	h.update(tail_b)
 	results.append( (('PARTIAL', h.name), (size-tail_length, tail_length), h.digest()) )
+
 	return results
 	
 if __name__ == '__main__':
 	# test file is 1,000,000 byte file of zeroes
-	results = get_characteristics('testing/zeros.1M')
+	#results = get_characteristics('testing/zeros.1M')
+	results = get_characteristics('testing/seuss.pickle')
 	print(results)
-	assert (('TOTAL', 'adler32'), 1126236161) in results
+	print("Checksums match: ", (('TOTAL', 'adler32'), 1126236161) in results)
 
 # vim: tabstop=4 shiftwidth=4 softtabstop=4 number :

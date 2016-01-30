@@ -59,10 +59,7 @@ def get_file_info(arg, method=characterize.get_characteristics, **kwargs):
 	row.filename = arg
 	row.stat = STAT(arg)
 	size = row.stat.st_size
-	if not size:
-		return
-	with open(arg, 'rb') as fi:
-		row.sums = set(method(fi, size_hint=size))
+	row.sums = set(method(arg, size_hint=size))
 	if tarfile.is_tarfile(arg):
 		row.members = dict(expand_tarfile(arg, **kwargs))
 	elif zipfile.is_zipfile(arg):

@@ -3,32 +3,38 @@
 """
 
 
-def getfile(flo, ib, callback=None, limit=4.8E9):
+def getfile(flo, ib, callback=None, limit=4.8E9, buffer_size=(1<<17)):
+	if not hasattr(flo, 'read'):
+		raise ValueError(type(flo))
 	head_length, tail_length = ib
-	buffer_size = (1<<18)
-	assert head_length < buffer_size
-	assert tail_length < buffer_size
+	while (buffer_size < head_length) or (buffer_size < tail_length):
+		buffer_size <<= 1
+	size = None
+	head_b = tail_b = b''
 	try:
-		size = flo.seek(0, 2)
+		size = flo.seek(0, 2) # 2=end
 		seekable = True
+	except OSError:
+		seekable = False
+	if seekable:
 		if size == 0:
-			return 0, b'', b''
+			return size, (head_b, tail_b)
+		tail_length = min(tail_length, size)
 		flo.seek(-tail_length, 2)
 		tail_b = flo.read(tail_length)
-		flo.seek(0, 0)
-	except:
-		seekable = False
-		size = None
-		tail_b = b''
+		flo.seek(0, 0) # 0=begin
 
 	first_b = flo.read(buffer_size)
-	head_b = first_b[:head_length]
-	if (seekable and not callback) or (len(first_b) < buffer_size):
-		return size, (head_b, tail_b)
-
 	buffer_total = len(first_b)
-	if callback: callback(first_b)
+	assert buffer_total, "Not expecting empty buffer"
+	if buffer_total:
+		head_b = first_b[:head_length]
+		if callback: callback(first_b)
+	if (buffer_total < buffer_size):
+		return buffer_total, (head_b, first_b[-tail_length:])
+
 	prev_b, this_b = first_b, flo.read(buffer_size)
+	assert len(this_b)
 	while len(this_b) == buffer_size: # runs for second block ... last whole block
 		if 0 < limit < buffer_total+buffer_size:
 			size = -1
@@ -50,11 +56,7 @@ def getfile(flo, ib, callback=None, limit=4.8E9):
 		last_b = prev_b
 	if not tail_b:
 		tail_b = last_b[-tail_length:]
-	if size is None:
-		size = buffer_total
-	else:
-		assert size == buffer_total
-	return size, (head_b, tail_b)
+	return buffer_total, (head_b, tail_b)
 
 
 # vim: tabstop=4 shiftwidth=4 softtabstop=4 number :

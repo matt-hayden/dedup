@@ -1,8 +1,6 @@
 #! /usr/bin/env python3
-
 """
 """
-
 import hashlib
 import os, os.path
 
@@ -20,27 +18,6 @@ i = 1
 for tag in tags:
 	MATCH_WEIGHTS[tag] = i
 	i <<= 1
-
-
-class Digester:
-	"""
-	hfunction has update() and digest(), wrapped in this class
-	"""
-	hfunction = None # override these in subclasses
-	def __init__(self):
-		self.h = self.hfunction()
-		self.size = 0
-		self.results = []
-	def update(self, b):
-		self.h.update(b)
-		self.results.append( (('PARTIAL', self.h.name), (self.size, self.size+len(b)), self.h.digest()) )
-		self.size += len(b)
-	def digest(self):
-		self.results.append( ('SIZE', self.size) )
-		self.results.append( (('TOTAL', self.h.name), self.h.digest()) )
-		return self.results
-
-
 def pack_match_code(tag_items, lookup=MATCH_WEIGHTS, weight_upper_limit=i) -> int:
 	bits = 0
 	for t in tag_items:
@@ -50,6 +27,26 @@ def pack_match_code(tag_items, lookup=MATCH_WEIGHTS, weight_upper_limit=i) -> in
 
 def unpack_match_code(bits, lookup=MATCH_WEIGHTS):
 	return [ k for k, v in lookup.items() if v & bits ]
+
+
+class Digester:
+	"""
+	hfunction has update() and digest(), wrapped in this class
+	"""
+	hfunction = None # override this in subclasses
+	def __init__(self):
+		self.h = self.hfunction()
+		self.size = 0
+		self.results = []
+	def update(self, b):
+		self.h.update(b)
+		if len(b):
+			self.results.append( (('PARTIAL', self.h.name), (self.size, self.size+len(b)), self.h.digest()) )
+			self.size += len(b)
+	def digest(self):
+		self.results.append( ('SIZE', self.size) )
+		self.results.append( (('TOTAL', self.h.name), self.h.digest()) )
+		return self.results
 
 
 __all__ = 'MATCH_WEIGHTS pack_match_code unpack_match_code STAT'.split()
