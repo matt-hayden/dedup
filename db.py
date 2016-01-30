@@ -49,14 +49,16 @@ class Database:
 			del self.db
 		return True
 	def add_directory(self, arg, callback=None, ignore_dotfiles=True, ignore_symlinks=True):
+		if __debug__: print("Recursing", arg)
 		for root, dirs, files in os.walk(arg, topdown=True):
 			if ignore_dotfiles:
 				files = [ f for f in files if not f.startswith('.') ]
 				dirs = [ d for d in dirs if not d.startswith('.') ]
 			for f in files:
 				fullpath = os.path.join(root, f)
-				print(fullpath)
+				if __debug__: print("Found", fullpath)
 				if ignore_symlinks and os.path.islink(fullpath):
+					if __debug__: print(fullpath, "is a symlink")
 					continue
 				if self.add_entry(fullpath) and callback:
 					callback(fullpath)
@@ -100,7 +102,7 @@ class Database:
 				if MIN_WEIGHT <= w:
 					search_chars.update([c])
 			else:
-				print('Interestingly, {} is found but not weighted'.format(c))
+				if __debug__: print('Interestingly, {} is found but not weighted'.format(c))
 		for f, i in self.db.items():
 			if i.sums & search_chars:
 				yield f, i
@@ -117,33 +119,6 @@ class Database:
 				yield f, i
 				del dp[f]
 				action(f)
-	def dedup2(self):
-		"""Modified argument in-place, generating tuple of duplicates
-		"""
-		def is_valid(filename):
-			if os.path.islink(filename):
-				return False
-			return True
-		repl = {}
-		while len(self.db):
-			t_f, t_i = self.db.popitem()
-			if not is_valid(t_f):
-				continue
-			for f, i in self.db.items():
-				if not is_valid(f):
-					continue
-				if t_i == i:
-					self.del_entry(f)
-					yield f, i
-			if hasattr(t_i, 'members'):
-				for tm_f, tm_i in t_i.members.items():
-					for f, i in self.db.items():
-						if tm_i == i:
-							self.del_entry(f)
-							yield f, i
-			repl[t_f] = t_i
-		# at this point, self.db is empty
-		self.db.update(repl)
 
 
 # vim: tabstop=4 shiftwidth=4 softtabstop=4 number :
