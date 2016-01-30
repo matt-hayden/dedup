@@ -42,7 +42,11 @@ class Database:
 			if hasattr(old_row, 'stat'):
 				if not cmp_stat(old_row.stat, new_stat): # returns -1 and 1 if different, 0 if identical
 					return False
-		self.db[k] = get_file_info(fullpath)
+		fi = get_file_info(fullpath)
+		if fi:
+			self.db[k] = fi
+		elif k in self.db:
+			del self.db
 		return True
 	def add_directory(self, arg, callback=None, ignore_dotfiles=True, ignore_symlinks=True):
 		for root, dirs, files in os.walk(arg, topdown=True):
@@ -51,6 +55,7 @@ class Database:
 				dirs = [ d for d in dirs if not d.startswith('.') ]
 			for f in files:
 				fullpath = os.path.join(root, f)
+				print(fullpath)
 				if ignore_symlinks and os.path.islink(fullpath):
 					continue
 				if self.add_entry(fullpath) and callback:

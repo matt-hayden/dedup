@@ -54,34 +54,38 @@ class ZipFileObj(FileObj):
 	pass
 
 
-def get_file_info(arg, method=characterize.characterize, **kwargs):
+def get_file_info(arg, method=characterize.get_characteristics, **kwargs):
 	row = FileObj()
 	row.filename = arg
 	row.stat = STAT(arg)
+	size = row.stat.st_size
+	if not size:
+		return
 	with open(arg, 'rb') as fi:
-		row.sums = set(method(fi, size_hint=row.stat.st_size))
+		row.sums = set(method(fi, size_hint=size))
 	if tarfile.is_tarfile(arg):
 		row.members = dict(expand_tarfile(arg, **kwargs))
 	elif zipfile.is_zipfile(arg):
 		row.members = dict(expand_zipinfo(arg, **kwargs))
 	return row
 
-def expand_zipinfo(arg, method=characterize.characterize):
+def expand_zipinfo(arg, method=characterize.get_characteristics):
 	with zipfile.ZipFile(arg) as zf:
 		for internal_f in zf.infolist():
-			if internal_f.filename.endswith('/'):
+			if internal_f.filename.endswith('/'): # dirs end in / across platforms?
 				continue
 			row = ZipFileObj()
-#			row.comment		=	internal_f.comment
-#			row.date_time	=	internal_f.date_time
+			#row.mtime		=	internal_f.date_time
 			row.filename	=	internal_f.filename
-#			row.ratio		=	float(internal_f.compress_size)/float(internal_f.file_size)
-			row.sums = set(method(zf.open(internal_f),
-								  size_hint=internal_f.file_size))
+			row.size		=	internal_f.file_size
+			if not row.size:
+				continue
+			row.sums		=	set( method(zf.open(internal_f), size_hint=row.size) )
 			row.sums.update( [ (('TOTAL', 'CRC'), internal_f.CRC) ] )
-#			row.volume		=	internal_f.volume
+			#row.volume		=	internal_f.volume
 			yield os.path.join(arg, row.filename), row
-def expand_tarfile(arg, method=characterize.characterize, ignore_symlinks=True):
+
+def expand_tarfile(arg, method=characterize.get_characteristics, ignore_symlinks=True):
 	"""
 		st_mode, st_ino, st_dev, st_nlink, st_uid, st_gid, st_size, st_atime, st_mtime, st_ctime
 	"""
@@ -89,26 +93,16 @@ def expand_tarfile(arg, method=characterize.characterize, ignore_symlinks=True):
 		for internal_f in tf.getmembers():
 			if not internal_f.isfile():
 				continue
+			# internal_f also has islnk() and issym()
 			if ignore_symlinks and internal_f.issym():
 				continue
 			row = TarFileObj()
+			#row.mtime		=	internal_f.mtime
 			row.filename	=	internal_f.name
-			'''
-			row.stat = (internal_f.mode,	# st_mode
-						-1,					# st_ino
-						-1,					# st_dev
-						None,				# st_nlink
-						internal_f.uid,		# st_uid
-						internal_f.gid,		# st_gid
-						internal_f.size,	# st_size
-						None,				# st_atime
-						internal_f.mtime,	# st_mtime
-						None				# st_ctime
-						)
-			'''
-			row.sums = set(method(internal_f.tobuf(),
-								  size_hint=internal_f.size) )
-			# internal_f also has islnk() and issym()
+			row.size		=	internal_f.size
+			if not row.size:
+				continue
+			row.sums		=	set( method(internal_f.tobuf(), size_hint=row.size) )
 			yield os.path.join(arg, row.filename), row
 
 

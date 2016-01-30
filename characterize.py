@@ -12,10 +12,11 @@ class Adler32digester(Digester):
 	hfunction = adler_checksum.Adler32
 		
 		
-def gen_characteristics(arg, wrapper=Adler32digester):
+def get_characteristics(arg, size_hint=None, wrapper=Adler32digester):
 	updater = wrapper()
 	hfunction = wrapper.hfunction
 	ib = (1024, 1024) # default
+	size = None
 	if isinstance(arg, str):
 		if os.path.isfile(arg):
 			dirname, basename = os.path.split(arg)
@@ -31,12 +32,15 @@ def gen_characteristics(arg, wrapper=Adler32digester):
 			fdi = open(arg, 'rb')
 	else:
 		fdi = arg # better have .read()
+	if size == 0:
+		return [ ('SIZE', 0) ]
 	if ib:
 		head_length, tail_length = ib
 		# callback may not be called for some files!
 		size, (head_b, tail_b) = getfile(fdi, ib, callback=updater.update)
+		assert size is not None
 		fdi.close()
-	assert updater.size == size
+	assert updater.size == (size or 0)
 	results = updater.digest()
 	h = hfunction()
 	h.update(head_b)
@@ -48,7 +52,7 @@ def gen_characteristics(arg, wrapper=Adler32digester):
 	
 if __name__ == '__main__':
 	# test file is 1,000,000 byte file of zeroes
-	results = gen_characteristics('testing/zeros.1M')
+	results = get_characteristics('testing/zeros.1M')
 	print(results)
 	assert (('TOTAL', 'adler32'), 1126236161) in results
 
