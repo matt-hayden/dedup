@@ -37,6 +37,11 @@ def get_characteristics(arg, size_hint=None, wrapper=Adler32digester):
 		raise ValueError(type(arg))
 	assert (0, 0) < ib, "invalid heading and tailing"
 	head_length, tail_length = ib
+	if size < head_length:
+		head_length = size
+	if size < tail_length:
+		tail_length = size
+	ib = head_length, tail_length
 	# callback may not be called for some files!
 	read_size, (head_b, tail_b) = getfile(fdi, ib, callback=updater.update)
 	if read_size == -1:
