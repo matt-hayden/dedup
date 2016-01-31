@@ -12,6 +12,7 @@ MATCH_WEIGHTS = {}
 tags = 'FOURCC FIRST_LINE SIZE'.split()
 #for x in 'CRC adler32 md5 sha128 sha224 sha256 sha384 sha512'.split():
 #	tags.append( ('RUNNING', x) )
+tags += ['FINGERPRINT']
 for x in 'CRC adler32 md5 sha128 sha224 sha256 sha384 sha512'.split():
 	tags.extend( [ ('PARTIAL', x), ('TOTAL', x) ] )
 i = 1

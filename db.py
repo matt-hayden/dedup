@@ -116,9 +116,9 @@ class Database:
 			t_f, t_i = dp.popitem()
 			dups = [ (f, i) for (f, i) in dp.items() if t_i == i ]
 			for f, i in dups:
-				yield f, i
 				del dp[f]
 				action(f)
+				yield f, i
 
 
 # vim: tabstop=4 shiftwidth=4 softtabstop=4 number :
