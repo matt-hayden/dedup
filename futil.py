@@ -2,6 +2,7 @@
 
 """
 """
+from datetime import datetime
 import os, os.path
 import tarfile
 import zipfile
@@ -36,7 +37,12 @@ def get_match_code(lhs, rhs):
 	return pack_match_code(com)
 
 
-class FileObj:
+class Comparable:
+	"""stat, sums
+	"""
+	def __init__(self):
+		self.members = []
+		self.stat = None
 	def __eq__(self, other):
 		if hasattr(self, 'stat') and hasattr(other, 'stat'):
 			if (cmp_stat(self.stat, other.stat) == 0):
@@ -44,17 +50,41 @@ class FileObj:
 		if self.matches(other):
 			return True
 		return False
-	def matches(self, other, threshold=64):
-		mc = get_match_code(self.sums, other.sums)
-		return (threshold <= mc)
-# pickle needs these to not be nested inside of a function or class
-class TarFileObj(FileObj):
-	pass
-class ZipFileObj(FileObj):
-	pass
+	def matches(self, other):
+		return 1 <= self.get_match_value(other)
+	def get_match_value(self, other, divisor=float(THRESHOLD_FOR_EQUALITY)):
+		if isinstance(other, Comparable):
+			mc = get_match_code(self.sums, other.sums)
+		else:
+			mc = get_match_code(self.sums, other)
+		return mc/divisor
+	def __and__(self, other):
+		if isinstance(other, Comparable):
+			return self.matches(other)
+		else:
+			return self.sums & set(other)
+	def __ior__(self, other):
+		# TODO: conservative
+		assert self.stat == other.stat
+		self.sums |= other.sums
+		return self
 
 
-def get_file_info(arg, method=characterize.get_characteristics, **kwargs):
+class FileObj(Comparable):
+	def describe(self):
+		return [ str(datetime.fromtimestamp(self.stat.st_mtime)) if self.stat else '',
+				 self.stat.st_size if self.stat else -1,
+				 len(self.members) ]
+	def __repr__(self):
+		blank = ' '
+		parts = zip(('{:^26}',	'{:12d}',	'{:4d}'),
+					self.describe(),
+					(26,		12,		4))
+		return blank.join(fs.format(s) if s else blank*fl for fs, s, fl in parts)
+		
+
+
+def get_file_info(arg, method=characterize.fast, method_for_archives=characterize.exhaustive):
 	row = FileObj()
 	row.filename = arg
 	row.stat = STAT(arg)
@@ -62,28 +92,45 @@ def get_file_info(arg, method=characterize.get_characteristics, **kwargs):
 	c = method(arg, size_hint=size)
 	row.sums = set(c)
 	if tarfile.is_tarfile(arg):
-		row.members = dict(expand_tarfile(arg, **kwargs))
+		row.members = dict(expand_tarfile(arg, method=method_for_archives))
 	elif zipfile.is_zipfile(arg):
-		row.members = dict(expand_zipinfo(arg, **kwargs))
+		row.members = dict(expand_zipinfo(arg, method=method_for_archives))
 	return row
 
-def expand_zipinfo(arg, method=characterize.get_characteristics):
+class ZipFileObj(FileObj):
+	def __init__(self, zi):
+		# zi is a ZipInfo object
+		self.date_time	=	zi.date_time
+		# TODO: process early 1980 as date_time=None
+		self.filename	=	zi.filename
+		self.size		=	zi.file_size
+		self.volume		=	zi.volume
+	def describe(self):
+		return [ self.date_time or '',
+				 self.size,
+				 0 ]
+def expand_zipinfo(arg, method=characterize.fast):
 	with zipfile.ZipFile(arg) as zf:
 		for internal_f in zf.infolist():
 			if internal_f.filename.endswith('/'): # dirs end in / across platforms?
 				continue
-			row = ZipFileObj()
-			#row.mtime		=	internal_f.date_time
-			row.filename	=	internal_f.filename
-			row.size		=	internal_f.file_size
-			if not row.size:
+			row = ZipFileObj(internal_f)
+			if row.size == 0:
 				continue
 			row.sums		=	set( method(zf.open(internal_f), size_hint=row.size) )
 			row.sums.update( [ (('TOTAL', 'CRC'), internal_f.CRC) ] )
-			#row.volume		=	internal_f.volume
 			yield os.path.join(arg, row.filename), row
 
-def expand_tarfile(arg, method=characterize.get_characteristics, ignore_symlinks=True):
+class TarFileObj(FileObj):
+	def __init__(self, ti):
+		self.mtime		=	ti.mtime
+		self.tilename	=	ti.name
+		self.size		=	ti.size
+	def describe(self):
+		return [ datetime.fromtimestamp(self.mtime) if self.mtime else None,
+				 self.size,
+				 0 ]
+def expand_tarfile(arg, method=characterize.fast, ignore_symlinks=True):
 	"""
 		st_mode, st_ino, st_dev, st_nlink, st_uid, st_gid, st_size, st_atime, st_mtime, st_ctime
 	"""
@@ -94,10 +141,7 @@ def expand_tarfile(arg, method=characterize.get_characteristics, ignore_symlinks
 			# internal_f also has islnk() and issym()
 			if ignore_symlinks and internal_f.issym():
 				continue
-			row = TarFileObj()
-			#row.mtime		=	internal_f.mtime
-			row.filename	=	internal_f.name
-			row.size		=	internal_f.size
+			row = TarFileObj(internal_f)
 			if not row.size:
 				continue
 			row.sums		=	set( method(internal_f.tobuf(), size_hint=row.size) )

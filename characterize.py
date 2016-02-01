@@ -3,23 +3,19 @@
 """
 import os, os.path
 
-from __init__ import Digester
+from __init__ import FastDigester, ExhaustiveDigester
 import adler_checksum
 from util import getfile
 import fpcalc
 import thumbnail
 
-class Adler32digester(Digester):
-	hfunction = adler_checksum.Adler32
-		
-		
-def get_characteristics(arg, size_hint=None, wrapper=Adler32digester):
+
+def get_characteristics(arg, wrapper, size_hint=None):
 	"""
 	size_hint is used if other means fail
 	wrapper can be a class that implements update() and digest(), with an hfunction like hashlib.md5
 	"""
 	updater = wrapper()
-	hfunction = wrapper.hfunction
 	ib = 1024, 1024 # default
 	size = None
 	def check():
@@ -82,15 +78,24 @@ def get_characteristics(arg, size_hint=None, wrapper=Adler32digester):
 
 	check()
 
-	h = hfunction()
-	h.update(head_b)
-	results.append( (('PARTIAL', h.name), (0, ib[0]), h.digest()) )
-	h = hfunction()
-	h.update(tail_b)
-	results.append( (('PARTIAL', h.name), (size-ib[-1], size), h.digest()) )
+	for hfunction in updater.hfunctions:
+		h = hfunction()
+		h.update(head_b)
+		results.append( (('PARTIAL', h.name), (0, ib[0]), h.digest()) )
+		h = hfunction()
+		h.update(tail_b)
+		results.append( (('PARTIAL', h.name), (size-ib[-1], size), h.digest()) )
 
 	return results
-	
+
+def fast(*args, **kwargs):
+	kwargs['wrapper'] = FastDigester
+	return get_characteristics(*args, **kwargs)
+
+def exhaustive(*args, **kwargs):
+	kwargs['wrapper'] = ExhaustiveDigester
+	return get_characteristics(*args, **kwargs)
+
 if __name__ == '__main__':
 	# test file is 1,000,000 byte file of zeroes
 	#results = get_characteristics('testing/zeros.1M')

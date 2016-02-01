@@ -4,8 +4,10 @@
 import collections
 import os, os.path
 import shelve
+import shlex
 import re
 
+import characterize
 from __init__ import *
 from futil import *
 
@@ -90,7 +92,7 @@ class Database:
 		freqs = collections.Counter()
 		for vs in self.db.values():
 			freqs.update(vs.sums)
-			if recurse_archives and hasattr(vs, 'members'):
+			if recurse_archives and vs.members:
 				for i in vs.members.values():
 					freqs.update(i.sums)
 		mc = freqs.most_common()
@@ -103,54 +105,59 @@ class Database:
 				print(c)
 			print()
 		return mc[:n], [ i for i, c in mc[n:] ]
-	def get_possible_duplicates(self, MIN_WEIGHT=4):
-		"""Does not recurse into archives
+	def get_possible_duplicates(self, min_weight=THRESHOLD_FOR_MATCH):
+		"""Possible duplicates match to the degree perscribed by min_weight
+
+		Does not recurse into archives
 		"""
 		nonunique_freqs, _ = self.get_sums_frequencies()
-		if __debug__:
-			print(len(nonunique_freqs), "non-unique characteristics:")
-			for c, f in nonunique_freqs:
-				print(f, c)
-			print()
 		search_chars = set()
 		for c, _ in nonunique_freqs:
 			w = MATCH_WEIGHTS.get(c[0])
 			if w:
-				if MIN_WEIGHT <= w:
+				if min_weight <= w:
 					search_chars.update([c])
 			else:
-				if __debug__: print('Interestingly, {} is found but not weighted'.format(c))
+				if __debug__: print("Interestingly,", c, "is found but not weighted")
+		if __debug__:
+			print("non-unique characteristics:")
 		for f, i in self.db.items():
-			if i.sums & search_chars:
+			matches = i.sums & search_chars
+			if matches:
+				if __debug__: print(f, i, matches)
 				yield f, i
-	def dedup(self, action=None):
+	def get_duplicates(self, method=characterize.exhaustive, key=('TOTAL', 'md5')):
+		"""Positive duplicates match to the degree perscribed by THRESHOLD_FOR_EQUALITY
+
+		Does not recurse into archives
+		"""
+		for f, i in self.get_possible_duplicates():
+			if key not in i.sums:
+				ni = get_file_info(f, method=method)
+				if ni:
+					self.db[f] |= ni
+		return self.get_possible_duplicates(min_weight=THRESHOLD_FOR_EQUALITY)
+	def dedup(self, action='prune', exhaustive=True):
 		"""Does not recurse into archives
 		"""
-		if action is None:
+		if action == 'prune':
 			action = self.del_entry
-		dp = dict(self.get_possible_duplicates())
-		while len(dp):
-			t_f, t_i = dp.popitem()
-			dups = [ (f, i) for (f, i) in dp.items() if t_i == i ]
-			if not dups:
-				if __debug__: print(t_f, "found to be unique")
-				continue
-			else:
-				if __debug__: print("Files identical to", t_f,":")
-			for f, i in dups:
-				del dp[f]
-				if __debug__: print(f)
-				action(f)
-				yield f, i
-	def ls(self, pattern=''):
-		if pattern:
-			if isinstance(pattern, str):
-				pattern = re.compile(pattern)
-			for k in self.db:
-				if pattern.match(k):
-					yield k
+		elif action == 'delete':
+			def action(fn):
+				print('$RM', shlex.quote(fn))
+				self.del_entry(fn)
+		dp = sorted(self.get_duplicates())
+		if not exhaustive:
+			yield from dp
 		else:
-			yield from self.db.keys()
+			while len(dp):
+				t_f, t_i = dp.pop(0)
+				for (f, i) in dp[:]:
+					if t_i == i:
+						if __debug__: print(t_f,"==",f,"by",t_i.sums,"==",i.sums)
+						dp.remove((f,i))
+						if action: action(f)
+						yield f, i
 
 
 def open_db(arg=None):
