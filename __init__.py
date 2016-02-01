@@ -13,12 +13,16 @@ tags = 'FOURCC FIRST_LINE SIZE'.split()
 #for x in 'CRC adler32 md5 sha128 sha224 sha256 sha384 sha512'.split():
 #	tags.append( ('RUNNING', x) )
 tags += ['FINGERPRINT']
-for x in 'CRC adler32 md5 sha128 sha224 sha256 sha384 sha512'.split():
-	tags.extend( [ ('PARTIAL', x), ('TOTAL', x) ] )
+for style in 'PARTIAL TOTAL'.split():
+	for x in 'CRC adler32 md5 sha128 sha224 sha256 sha384 sha512'.split():
+		tags.append( (style, x) )
+if __debug__: print('Checksum types:')
 i = 1
 for tag in tags:
+	if __debug__: print(tag, '=', i)
 	MATCH_WEIGHTS[tag] = i
 	i <<= 1
+
 def pack_match_code(tag_items, lookup=MATCH_WEIGHTS, weight_upper_limit=i) -> int:
 	bits = 0
 	for t in tag_items:

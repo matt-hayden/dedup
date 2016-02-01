@@ -20,14 +20,23 @@ def get_characteristics(arg, size_hint=None, wrapper=Adler32digester):
 	"""
 	updater = wrapper()
 	hfunction = wrapper.hfunction
-	ib = (1024, 1024) # default
+	ib = 1024, 1024 # default
 	size = None
+	def check():
+		nonlocal ib
+		nonlocal size
+		assert (0, 0) < ib, "invalid heading and tailing"
+		if size is None:
+			return
+		if (size,)*2 < ib:
+			ib = size, ib[-1]
+		if (size,)*2 < ib:
+			ib = ib[0], size
 	results = []
 	if hasattr(arg, 'read'):
 		fdi = arg
 	elif isinstance(arg, str):
 		if os.path.isfile(arg):
-			if __debug__: print('File', arg)
 			dirname, basename = os.path.split(arg)
 			_, ext = os.path.splitext(basename)
 			try:
@@ -53,13 +62,9 @@ def get_characteristics(arg, size_hint=None, wrapper=Adler32digester):
 			fdi = open(arg, 'rb')
 	else:
 		raise ValueError(type(arg))
-	assert (0, 0) < ib, "invalid heading and tailing"
-	head_length, tail_length = ib
-	if size < head_length:
-		head_length = size
-	if size < tail_length:
-		tail_length = size
-	ib = head_length, tail_length
+
+	check()
+
 	# callback may not be called for some files!
 	read_size, (head_b, tail_b) = getfile(fdi, ib, callback=updater.update)
 	if read_size == -1:
@@ -75,12 +80,14 @@ def get_characteristics(arg, size_hint=None, wrapper=Adler32digester):
 	assert updater.size == size, "Expected {} bytes from updater {}, got {}".format(size, updater, updater.size)
 	results += updater.digest()
 
+	check()
+
 	h = hfunction()
 	h.update(head_b)
-	results.append( (('PARTIAL', h.name), (0, head_length), h.digest()) )
+	results.append( (('PARTIAL', h.name), (0, ib[0]), h.digest()) )
 	h = hfunction()
 	h.update(tail_b)
-	results.append( (('PARTIAL', h.name), (size-tail_length, tail_length), h.digest()) )
+	results.append( (('PARTIAL', h.name), (size-ib[-1], size), h.digest()) )
 
 	return results
 	

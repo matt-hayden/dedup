@@ -1,5 +1,4 @@
 #! /usr/bin/env python3
-
 """
 """
 import collections
@@ -11,28 +10,31 @@ from __init__ import *
 from futil import *
 
 
+DEFAULT_DB_FILENAME = '.dedup.db'
+
 class DatabaseError(Exception):
 	pass
 
 
 class Database:
-	def __init__(self, *args):
+	def __init__(self, *args, **kwargs):
 		self.db = {}
 		self.filename = ''
 		self.root = ''
-		self.open(*args)
-	def open(self, filename):
+		self.open(*args, **kwargs)
+	def open(self, filename, root=''):
 		dirname, basename = os.path.split(filename)
 		self.filename = os.path.abspath(filename)
-		self.root = os.path.abspath(dirname)
+		self.root = root or os.path.abspath(dirname)
 		self.db = shelve.open(filename or self.filename)
 	def close(self):
 		self.db.close()
 	def add_entry(self, arg):
-		if arg.startswith(self.root):
-			fullpath, k = arg, arg[(len(self.root)+1):]
+		fullpath = os.path.abspath(arg)
+		if self.root:
+			k = os.path.relpath(fullpath, self.root)
 		else:
-			k, fullpath = arg, os.path.join(self.root, arg)
+			k = arg
 		old_row = self.db.get(k, None)
 		if old_row:
 			if not os.path.exists(fullpath):
@@ -49,19 +51,24 @@ class Database:
 			del self.db
 		return True
 	def add_directory(self, arg, callback=None, ignore_dotfiles=True, ignore_symlinks=True):
-		if __debug__: print("Recursing", arg)
+		pathlist = []
 		for root, dirs, files in os.walk(arg, topdown=True):
 			if ignore_dotfiles:
 				files = [ f for f in files if not f.startswith('.') ]
 				dirs = [ d for d in dirs if not d.startswith('.') ]
 			for f in files:
-				fullpath = os.path.join(root, f)
-				if __debug__: print("Found", fullpath)
-				if ignore_symlinks and os.path.islink(fullpath):
-					if __debug__: print(fullpath, "is a symlink")
+				relpath = os.path.join(root, f)
+				if ignore_symlinks and os.path.islink(relpath):
+					if __debug__: print(relpath, "is a symlink")
 					continue
-				if self.add_entry(fullpath) and callback:
-					callback(fullpath)
+				pathlist.append(relpath)
+		if __debug__: print("Found", len(pathlist), "files in", arg)
+		if not len(pathlist):
+			return
+		for fp in pathlist:
+			if __debug__: print(fp)
+			if self.add_entry(fp) and callback:
+				callback(fp)
 	def del_entry(self, arg):
 		if arg in self.db:
 			del self.db[arg]
@@ -76,7 +83,7 @@ class Database:
 			if pattern and not pattern.match(k):
 				continue
 			fullpath = os.path.join(self.root, k)
-			self.add_entry(full_path)
+			self.add_entry(fullpath)
 	def get_sums_frequencies(self, recurse_archives=True):
 		"""Returns (list of duplicates, list of uniques) characteristics found in the database
 		"""
@@ -90,13 +97,23 @@ class Database:
 		for n, (i, c) in enumerate(mc):
 			if c == 1:
 				break
+		if __debug__:
+			print(len(mc)-n, "unique characteristics:")
+			for c, _ in mc[n:]:
+				print(c)
+			print()
 		return mc[:n], [ i for i, c in mc[n:] ]
 	def get_possible_duplicates(self, MIN_WEIGHT=4):
 		"""Does not recurse into archives
 		"""
-		nunique_freqs, _ = self.get_sums_frequencies()
+		nonunique_freqs, _ = self.get_sums_frequencies()
+		if __debug__:
+			print(len(nonunique_freqs), "non-unique characteristics:")
+			for c, f in nonunique_freqs:
+				print(f, c)
+			print()
 		search_chars = set()
-		for c, _ in nunique_freqs:
+		for c, _ in nonunique_freqs:
 			w = MATCH_WEIGHTS.get(c[0])
 			if w:
 				if MIN_WEIGHT <= w:
@@ -115,10 +132,50 @@ class Database:
 		while len(dp):
 			t_f, t_i = dp.popitem()
 			dups = [ (f, i) for (f, i) in dp.items() if t_i == i ]
+			if not dups:
+				if __debug__: print(t_f, "found to be unique")
+				continue
+			else:
+				if __debug__: print("Files identical to", t_f,":")
 			for f, i in dups:
 				del dp[f]
+				if __debug__: print(f)
 				action(f)
 				yield f, i
+	def ls(self, pattern=''):
+		if pattern:
+			if isinstance(pattern, str):
+				pattern = re.compile(pattern)
+			for k in self.db:
+				if pattern.match(k):
+					yield k
+		else:
+			yield from self.db.keys()
+
+
+def open_db(arg=None):
+	if arg is None:
+		root = os.path.abspath('.')
+		db_file = os.path.join(root, DEFAULT_DB_FILENAME)
+	elif isinstance(arg, str):
+		if os.path.isfile(arg):
+			root, _ = os.path.split(arg)
+			db_file = arg
+		elif os.path.isdir(arg):
+			root = arg
+			db_file = os.path.join(root, DEFAULT_DB_FILENAME)
+	else:
+		raise ValueError(type(arg))
+	if __debug__: print("opening Database({db_file}, root={root})".format(**locals()) )
+	db = Database(db_file, root=root)
+	return db
+
+
+def refresh(arg):
+	db = open_db(arg)
+	db.add_directory(arg)
+	db.refresh()
+	return db
 
 
 # vim: tabstop=4 shiftwidth=4 softtabstop=4 number :
