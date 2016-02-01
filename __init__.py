@@ -20,10 +20,10 @@ tags = [ 'FOURCC',
 		('PARTIAL', 'sha256'),
 		('PARTIAL', 'sha384'),
 		('PARTIAL', 'sha512'),
-		'SIZE',
 		'FINGERPRINT',
 		('TOTAL', 'CRC'),
 		('TOTAL', 'adler32'),
+		'SIZE',
 		('TOTAL', 'md5'),
 		('TOTAL', 'sha128'),
 		('TOTAL', 'sha224'),
@@ -49,8 +49,8 @@ def unpack_match_code(bits, lookup=MATCH_WEIGHTS):
 	return [ k for k, v in lookup.items() if v & bits ]
 
 
-THRESHOLD_FOR_MATCH = 1024 # pack_match_code(['SIZE'])
-THRESHOLD_FOR_EQUALITY = 16384 # pack_match_code([('TOTAL', 'md5')])
+THRESHOLD_FOR_MATCH = 2048|4096
+THRESHOLD_FOR_EQUALITY = 8192|16384
 
 
 class FastDigester:
