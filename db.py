@@ -24,13 +24,20 @@ class Database:
 		self.root = ''
 		self.open(*args, **kwargs)
 	def open(self, filename, root=''):
+		if __debug__: print("Database.open('{filename}', root='{root}')".format(**locals()) )
 		dirname, basename = os.path.split(filename)
 		self.filename = os.path.abspath(filename)
 		self.root = root or os.path.abspath(dirname)
 		self.db = shelve.open(filename or self.filename)
 	def close(self):
 		self.db.close()
-	def add_entry(self, arg):
+	def add_entry(self, arg, **kwargs):
+		"""
+		CRC=123
+		adler32=4567
+		md5=b'...'
+		sha256=b'...'
+		"""
 		fullpath = os.path.abspath(arg)
 		if self.root:
 			k = os.path.relpath(fullpath, self.root)
@@ -45,7 +52,11 @@ class Database:
 			if hasattr(old_row, 'stat'):
 				if not cmp_stat(old_row.stat, new_stat): # returns -1 and 1 if different, 0 if identical
 					return False
-		fi = get_file_info(fullpath)
+		if kwargs:
+			sums = { (('TOTAL', k), v) for k, v in kwargs.item() }
+			fi = get_file_info(fullpath, sums)
+		else:
+			fi = get_file_info(fullpath)
 		if fi:
 			self.db[k] = fi
 		elif k in self.db:
@@ -88,6 +99,8 @@ class Database:
 	def get_sums_frequencies(self, recurse_archives=True):
 		"""Returns (list of duplicates, list of uniques) characteristics found in the database
 		"""
+		if not len(self.db):
+			return (), ()
 		freqs = collections.Counter()
 		for vs in self.db.values():
 			freqs.update(vs.sums)
@@ -118,13 +131,15 @@ class Database:
 					search_chars.update([c])
 			else:
 				if __debug__: print("Interestingly,", c, "is found but not weighted")
+		if not len(search_chars):
+			return []
 		if __debug__:
 			print("non-unique characteristics:")
 		pd_by_char = collections.defaultdict(list)
 		for f, i in self.db.items():
 			matches = i.sums & search_chars
 			if matches:
-				if __debug__: print(f, i, matches)
+				if __debug__: print(f, repr(i), matches)
 				pd_by_char[str(matches)] += [ (f, i) ]
 		return pd_by_char.items()
 	def get_duplicates(self, method=characterize.exhaustive, key=('TOTAL', 'md5')):
@@ -139,18 +154,28 @@ class Database:
 					if ni:
 						self.db[f] |= ni
 		return self.get_possible_duplicates(min_weight=THRESHOLD_FOR_EQUALITY)
-	def dedup(self, prune=True, key=None):
+	def dedup(self, prune=False, key=None):
 		"""Does not recurse into archives
 		"""
+		if not len(self.db):
+			raise StopIteration
 		for _, fis in self.get_duplicates():
 			fis.sort(key=key)
 			while len(fis):
 				t_f, t_i = fis.pop(0)
 				for f, i in fis[:]:
+					if __debug__: print("Exhaustively comparing", t_f, "and", f)
 					if filecmp.cmp(t_f, f): # caches file comparisons
-						fis.remove((f,i))
-						if prune: self.del_entry(f)
+						fis.remove((f,i)) # i changes below
+						if prune:
+							self.del_entry(f)
+						else:
+							i.is_dup = True
+							self.db[f] = i
 						yield t_f, f
+					elif not prune:
+						i.is_dup = False
+						self.db[f] = i
 	def get_by_pattern(self, pattern='', recurse_archives=True, key=None):
 		if not len(self.db):
 			raise StopIteration

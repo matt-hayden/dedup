@@ -7,6 +7,8 @@ class FakeHashFunction:
 	name = ''
 	def digest(self):
 		return self.value
+	def hexdigest(self):
+		return hex(self.value)
 	def __init__(self):
 		self.value = None
 class Adler32(FakeHashFunction):

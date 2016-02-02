@@ -6,7 +6,7 @@ import os, os.path
 
 import adler_checksum
 
-STAT = os.stat # lstat
+STAT = os.stat # could be lstat
 
 MATCH_WEIGHTS = {}
 
@@ -66,11 +66,11 @@ class FastDigester:
 		self.h.update(b)
 		if len(b):
 			new_size = (self.size or 0) + len(b)
-			self.results.append( (('PARTIAL', self.h.name), (self.size or 0, new_size), self.h.digest()) )
+			self.results.append( (('PARTIAL', self.h.name), (self.size or 0, new_size), self.h.hexdigest()) )
 			self.size = new_size
 	def digest(self):
 		self.results.append( ('SIZE', self.size) )
-		self.results.append( (('TOTAL', self.h.name), self.h.digest()) )
+		self.results.append( (('TOTAL', self.h.name), self.h.hexdigest()) )
 		return self.results
 
 class ExhaustiveDigester:
@@ -88,18 +88,19 @@ class ExhaustiveDigester:
 		if len(b):
 			new_size = (self.size or 0) + len(b)
 			for h in self.hs:
-				self.results += [(('PARTIAL', h.name), (self.size or 0, new_size), h.digest())]
+				self.results += [(('PARTIAL', h.name), (self.size or 0, new_size), h.hexdigest())]
 			self.size = new_size
 	def digest(self):
 		self.results += [('SIZE', self.size)]
 		for h in self.hs:
-			self.results += [(('TOTAL', h.name), h.digest())]
+			self.results += [(('TOTAL', h.name), h.hexdigest())]
 		return self.results
 
 class FastDigester(ExhaustiveDigester):
 	hfunctions = [ adler_checksum.Adler32 ]
 
 
-__all__ = 'MATCH_WEIGHTS THRESHOLD_FOR_MATCH THRESHOLD_FOR_EQUALITY'.split()
-__all__ += 'pack_match_code unpack_match_code STAT'.split()
+__all__ = 'STAT'.split()
+__all__ += 'MATCH_WEIGHTS THRESHOLD_FOR_MATCH THRESHOLD_FOR_EQUALITY'.split()
+__all__ += 'pack_match_code unpack_match_code'.split()
 # vim: tabstop=4 shiftwidth=4 softtabstop=4 number :

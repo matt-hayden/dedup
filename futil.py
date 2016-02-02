@@ -70,6 +70,7 @@ class Comparable:
 class FileObj(Comparable):
 	def __init__(self, my_stat):
 		self.members	=	[]
+		self.is_dup		=	None
 
 		if my_stat:
 			self.datetime	=	datetime.fromtimestamp(my_stat.st_mtime)
@@ -79,35 +80,58 @@ class FileObj(Comparable):
 			self.datetime	=	()
 			self.size		=	None
 			self.stat		=	()
-	def describe(self):
-		flags = ''
-		if hasattr(self, 'sums'):
-			if ('TOTAL', 'md5') in self.sums:
-				flags += 'M'
-			if ('TOTAL', 'sha256') in self.sums:
-				flags += 'S'
+	def get_flags(self):
 		if hasattr(self, 'size'):
-			if not isinstance(self.size, int):
-				flags += 'z'
+			if self.size in (0, None):
+				yield '0'
+		if hasattr(self, 'sums'):
+			for tup in self.sums:
+				label = tup[0]
+				if 'TOTAL' in label:
+					try:
+						s = len(tup[-1])
+						if 10 < s:
+							yield 'H{}'.format(s)
+					except TypeError:
+						pass
+					continue
+			yield ' '
+			for tup in self.sums:
+				label = tup[0]
+				if 'FINGERPRINT' in label:
+					yield 'f'
+				elif 'BW' in label:
+					yield 't'
+				elif 'COLOR' in label:
+					yield 't'
 		if hasattr(self, 'members'):
 			if self.members:
-				flags += '*'
+				yield 'a'
+		if hasattr(self, 'is_dup'):
+			if self.is_dup:
+				yield 'D'
+	def describe(self):
 		return [ self.datetime or '',
 				 self.size,
-				 flags ]
+				 ''.join(self.get_flags()) ]
 	def __repr__(self):
+		return "<File {1:,} b  modified {0:%c}  flags '{2}'>".format(*self.describe())
+	def __str__(self):
 		blank = ' '
-		parts = zip(('{:%c}',	'{:12d}',	'{:>4}'),
+		parts = zip(('{:%c}',	'{:12d}',	'{:>10}'),
 					self.describe(),
-					(24,		12,			4))
+					(24,		12,			10))
 		return blank.join( (fs.format(s) if s else blank*fl) for fs, s, fl in parts)
 
 
-def get_file_info(arg, method=characterize.fast, method_for_archives=characterize.exhaustive):
+def get_file_info(arg, sums=None, method=characterize.fast, method_for_archives=characterize.exhaustive):
 	row = FileObj(STAT(arg))
 	row.filename = arg
-	c = method(arg, size_hint=row.size)
-	row.sums = set(c)
+	if sums:
+		row.sums = sums
+	else:
+		c = method(arg, size_hint=row.size)
+		row.sums = set(c)
 	if tarfile.is_tarfile(arg):
 		row.members = dict(expand_tarfile(arg, method=method_for_archives))
 	elif zipfile.is_zipfile(arg):
@@ -132,7 +156,7 @@ def expand_zipinfo(arg, method=characterize.fast):
 			if row.size == 0:
 				continue
 			row.sums		=	set( method(zf.open(internal_f), size_hint=row.size) )
-			row.sums.update( [ (('TOTAL', 'CRC'), internal_f.CRC) ] )
+			row.sums.update( [ (('TOTAL', 'CRC'), hex(internal_f.CRC)) ] )
 			yield os.path.join(arg, row.filename), row
 
 
