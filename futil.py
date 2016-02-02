@@ -40,9 +40,6 @@ def get_match_code(lhs, rhs):
 class Comparable:
 	"""stat, sums
 	"""
-	def __init__(self):
-		self.members = []
-		self.stat = None
 	def __eq__(self, other):
 		if hasattr(self, 'stat') and hasattr(other, 'stat'):
 			if (cmp_stat(self.stat, other.stat) == 0):
@@ -71,25 +68,45 @@ class Comparable:
 
 
 class FileObj(Comparable):
+	def __init__(self, my_stat):
+		self.members	=	[]
+
+		if my_stat:
+			self.datetime	=	datetime.fromtimestamp(my_stat.st_mtime)
+			self.size		=	my_stat.st_size
+			self.stat		=	my_stat
+		else:
+			self.datetime	=	()
+			self.size		=	None
+			self.stat		=	()
 	def describe(self):
-		return [ str(datetime.fromtimestamp(self.stat.st_mtime)) if self.stat else '',
-				 self.stat.st_size if self.stat else -1,
-				 len(self.members) ]
+		flags = ''
+		if hasattr(self, 'sums'):
+			if ('TOTAL', 'md5') in self.sums:
+				flags += 'M'
+			if ('TOTAL', 'sha256') in self.sums:
+				flags += 'S'
+		if hasattr(self, 'size'):
+			if not isinstance(self.size, int):
+				flags += 'z'
+		if hasattr(self, 'members'):
+			if self.members:
+				flags += '*'
+		return [ self.datetime or '',
+				 self.size,
+				 flags ]
 	def __repr__(self):
 		blank = ' '
-		parts = zip(('{:^26}',	'{:12d}',	'{:4d}'),
+		parts = zip(('{:%c}',	'{:12d}',	'{:>4}'),
 					self.describe(),
-					(26,		12,		4))
-		return blank.join(fs.format(s) if s else blank*fl for fs, s, fl in parts)
-		
+					(24,		12,			4))
+		return blank.join( (fs.format(s) if s else blank*fl) for fs, s, fl in parts)
 
 
 def get_file_info(arg, method=characterize.fast, method_for_archives=characterize.exhaustive):
-	row = FileObj()
+	row = FileObj(STAT(arg))
 	row.filename = arg
-	row.stat = STAT(arg)
-	size = row.stat.st_size
-	c = method(arg, size_hint=size)
+	c = method(arg, size_hint=row.size)
 	row.sums = set(c)
 	if tarfile.is_tarfile(arg):
 		row.members = dict(expand_tarfile(arg, method=method_for_archives))
@@ -99,16 +116,13 @@ def get_file_info(arg, method=characterize.fast, method_for_archives=characteriz
 
 class ZipFileObj(FileObj):
 	def __init__(self, zi):
+		self.members	=	None
 		# zi is a ZipInfo object
-		self.date_time	=	zi.date_time
-		# TODO: process early 1980 as date_time=None
+		dt				=	datetime(*zi.date_time)
+		self.datetime	=	dt if (datetime(1980, 1, 1) < dt) else None
 		self.filename	=	zi.filename
 		self.size		=	zi.file_size
 		self.volume		=	zi.volume
-	def describe(self):
-		return [ self.date_time or '',
-				 self.size,
-				 0 ]
 def expand_zipinfo(arg, method=characterize.fast):
 	with zipfile.ZipFile(arg) as zf:
 		for internal_f in zf.infolist():
@@ -121,15 +135,14 @@ def expand_zipinfo(arg, method=characterize.fast):
 			row.sums.update( [ (('TOTAL', 'CRC'), internal_f.CRC) ] )
 			yield os.path.join(arg, row.filename), row
 
+
 class TarFileObj(FileObj):
 	def __init__(self, ti):
-		self.mtime		=	ti.mtime
-		self.tilename	=	ti.name
+		self.members	=	None
+
+		self.datetime	=	datetime.fromtimestamp(ti.mtime)
+		self.filename	=	ti.name
 		self.size		=	ti.size
-	def describe(self):
-		return [ datetime.fromtimestamp(self.mtime) if self.mtime else None,
-				 self.size,
-				 0 ]
 def expand_tarfile(arg, method=characterize.fast, ignore_symlinks=True):
 	"""
 		st_mode, st_ino, st_dev, st_nlink, st_uid, st_gid, st_size, st_atime, st_mtime, st_ctime

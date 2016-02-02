@@ -2,17 +2,16 @@
 """
 """
 import collections
+import filecmp
+import fnmatch
 import os, os.path
 import shelve
-import shlex
 import re
 
 import characterize
 from __init__ import *
 from futil import *
 
-
-DEFAULT_DB_FILENAME = '.dedup.db'
 
 class DatabaseError(Exception):
 	pass
@@ -107,7 +106,7 @@ class Database:
 		return mc[:n], [ i for i, c in mc[n:] ]
 	def get_possible_duplicates(self, min_weight=THRESHOLD_FOR_MATCH):
 		"""Possible duplicates match to the degree perscribed by min_weight
-
+		Returns a list of (characteristic, [(filename, info), ...])
 		Does not recurse into archives
 		"""
 		nonunique_freqs, _ = self.get_sums_frequencies()
@@ -121,68 +120,53 @@ class Database:
 				if __debug__: print("Interestingly,", c, "is found but not weighted")
 		if __debug__:
 			print("non-unique characteristics:")
+		pd_by_char = collections.defaultdict(list)
 		for f, i in self.db.items():
 			matches = i.sums & search_chars
 			if matches:
 				if __debug__: print(f, i, matches)
-				yield f, i
+				pd_by_char[str(matches)] += [ (f, i) ]
+		return pd_by_char.items()
 	def get_duplicates(self, method=characterize.exhaustive, key=('TOTAL', 'md5')):
 		"""Positive duplicates match to the degree perscribed by THRESHOLD_FOR_EQUALITY
-
+		Returns a list of (characteristic, [(filename, info), ...])
 		Does not recurse into archives
 		"""
-		for f, i in self.get_possible_duplicates():
-			if key not in i.sums:
-				ni = get_file_info(f, method=method)
-				if ni:
-					self.db[f] |= ni
+		for _, fis in self.get_possible_duplicates():
+			for f, i in fis:
+				if key not in i.sums:
+					ni = get_file_info(f, method=method)
+					if ni:
+						self.db[f] |= ni
 		return self.get_possible_duplicates(min_weight=THRESHOLD_FOR_EQUALITY)
-	def dedup(self, action='prune', exhaustive=True):
+	def dedup(self, prune=True, key=None):
 		"""Does not recurse into archives
 		"""
-		if action == 'prune':
-			action = self.del_entry
-		elif action == 'delete':
-			def action(fn):
-				print('$RM', shlex.quote(fn))
-				self.del_entry(fn)
-		dp = sorted(self.get_duplicates())
-		if not exhaustive:
-			yield from dp
+		for _, fis in self.get_duplicates():
+			fis.sort(key=key)
+			while len(fis):
+				t_f, t_i = fis.pop(0)
+				for f, i in fis[:]:
+					if filecmp.cmp(t_f, f): # caches file comparisons
+						fis.remove((f,i))
+						if prune: self.del_entry(f)
+						yield t_f, f
+	def get_by_pattern(self, pattern='', recurse_archives=True, key=None):
+		if not len(self.db):
+			raise StopIteration
+		if pattern:
+			fis = sorted(( (f, i) for (f, i) in self.db.items() if fnmatch.fnmatch(f, pattern)), key=key)
 		else:
-			while len(dp):
-				t_f, t_i = dp.pop(0)
-				for (f, i) in dp[:]:
-					if t_i == i:
-						if __debug__: print(t_f,"==",f,"by",t_i.sums,"==",i.sums)
-						dp.remove((f,i))
-						if action: action(f)
-						yield f, i
-
-
-def open_db(arg=None):
-	if arg is None:
-		root = os.path.abspath('.')
-		db_file = os.path.join(root, DEFAULT_DB_FILENAME)
-	elif isinstance(arg, str):
-		if os.path.isfile(arg):
-			root, _ = os.path.split(arg)
-			db_file = arg
-		elif os.path.isdir(arg):
-			root = arg
-			db_file = os.path.join(root, DEFAULT_DB_FILENAME)
-	else:
-		raise ValueError(type(arg))
-	if __debug__: print("opening Database({db_file}, root={root})".format(**locals()) )
-	db = Database(db_file, root=root)
-	return db
-
-
-def refresh(arg):
-	db = open_db(arg)
-	db.add_directory(arg)
-	db.refresh()
-	return db
+			fis = sorted(self.db.items(), key=key)
+		for f, i in fis:
+			yield f, i
+			members = i.members
+			if recurse_archives and members:
+				if pattern:
+					fis = sorted(( (f, i) for (f, i) in members.items() if fnmatch.fnmatch(f, pattern)), key=key)
+				else:
+					fis = sorted(members.items(), key=key)
+				yield from fis
 
 
 # vim: tabstop=4 shiftwidth=4 softtabstop=4 number :

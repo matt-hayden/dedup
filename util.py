@@ -3,6 +3,15 @@
 """
 
 
+# For Python < 3.5
+def commonpath(*args):
+	prefix = os.path.commonprefix(args)
+	if os.path.isdir(prefix): return prefix
+	rprefix, _ = os.path.split(prefix)
+	if os.path.isdir(rprefix): return rprefix
+	return ''
+
+
 def getfile(arg, ib, callback=None, limit=4.8E9, buffer_size=(1<<17)):
 	head_length, tail_length = ib
 	while (buffer_size < head_length) or (buffer_size < tail_length):
